@@ -20,6 +20,7 @@ export default function CameraScreen() {
     const [permission, requestPermission] = useCameraPermissions()
     const [requesting, setRequesting] = useState(false)
     const [busy, setBusy] = useState(false)
+    const [notFound, setNotFound] = useState<string | null>(null)
     const lastCodeRef = useRef<string | null>(null)
 
     useEffect(() => {
@@ -37,20 +38,27 @@ export default function CameraScreen() {
 
     const onScanned = async (res: BarcodeScanningResult) => {
         if (busy) return
+
         const code = (res.data ?? '').trim()
         if (!code) return
         if (lastCodeRef.current === code) return
         lastCodeRef.current = code
 
         setBusy(true)
+        setNotFound(null)
+
         try {
-            const p = await getProductByBarcode(code)
-            if (!p) {
+            const food = await getProductByBarcode(code)
+
+            if (!food) {
+                setNotFound(code)
                 lastCodeRef.current = null
                 setBusy(false)
                 return
             }
-            const created = await addMeal(p, 100)
+
+            const created = await addMeal(food, 100)
+
             router.replace({
                 pathname: '/main/tabs/home/[id]',
                 params: { id: created.id },
@@ -122,7 +130,14 @@ export default function CameraScreen() {
                 <Text style={styles.hint}>
                     Vise le code-barres. Ajout auto à 100g.
                 </Text>
+
                 {busy && <Text style={styles.hint}>Recherche produit…</Text>}
+
+                {!!notFound && (
+                    <Text style={styles.error}>
+                        Produit introuvable pour : {notFound}
+                    </Text>
+                )}
             </View>
         </View>
     )
@@ -147,6 +162,7 @@ const styles = StyleSheet.create({
     },
     btnGhost: { backgroundColor: 'rgba(255,255,255,0.08)' },
     btnText: { color: 'white', fontWeight: '700' },
+
     topBar: {
         position: 'absolute',
         top: 48,
@@ -166,10 +182,12 @@ const styles = StyleSheet.create({
     },
     backText: { color: 'white', fontSize: 20, fontWeight: '800' },
     title: { color: 'white', fontSize: 18, fontWeight: '800' },
+
     bottom: { position: 'absolute', left: 14, right: 14, bottom: 30, gap: 6 },
     hint: {
         color: 'rgba(255,255,255,0.85)',
         fontWeight: '700',
         textAlign: 'center',
     },
+    error: { color: '#fb7185', fontWeight: '900', textAlign: 'center' },
 })

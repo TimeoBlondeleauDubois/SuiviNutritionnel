@@ -42,11 +42,11 @@ export type ProductSummary = {
 export function mapProduct(p: OffProduct): ProductSummary {
     const n = p.nutriments ?? {}
     return {
-        code: p.code,
+        code: String(p.code ?? '').trim(),
         name: pickName(p),
-        brands: p.brands,
-        imageUrl: p.image_url,
-        nutriscore: p.nutriscore_grade?.toUpperCase(),
+        brands: p.brands?.trim(),
+        imageUrl: p.image_url?.trim(),
+        nutriscore: p.nutriscore_grade?.trim()?.toUpperCase(),
         nutriments100g: {
             kcal: Number(n['energy-kcal_100g'] ?? 0),
             proteins: Number(n.proteins_100g ?? 0),
@@ -56,17 +56,40 @@ export function mapProduct(p: OffProduct): ProductSummary {
     }
 }
 
+function normalize(s: string) {
+    return s
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+}
+
+function expandMealKeyword(query: string): string {
+    const q = normalize(query)
+
+    if (q.includes('petit') || q.includes('dejeun'))
+        return 'breakfast petit-dejeuner'
+    if (q.includes('dej') && !q.includes('petit')) return 'lunch dejeuner'
+    if (q.includes('din')) return 'dinner diner'
+    if (q.includes('snack') || q.includes('gouter')) return 'snack'
+
+    return query.trim()
+}
+
 export async function searchProducts(query: string, pageSize = 10) {
-    const q = query.trim()
-    if (!q) return []
+    const base = query.trim()
+    if (!base) return []
+
+    const expanded = expandMealKeyword(base)
 
     const fields =
         'code,product_name,product_name_fr,product_name_en,brands,nutriments,image_url,nutriscore_grade'
 
     const url =
         `https://fr.openfoodfacts.org/cgi/search.pl?` +
-        `search_terms=${encodeURIComponent(q)}` +
+        `search_terms=${encodeURIComponent(expanded)}` +
         `&search_simple=1&action=process&json=1` +
+        `&json=1` +
         `&fields=${encodeURIComponent(fields)}` +
         `&page_size=${pageSize}`
 
@@ -80,7 +103,7 @@ export async function searchProducts(query: string, pageSize = 10) {
     const products: OffProduct[] = Array.isArray(data?.products)
         ? data.products
         : []
-    return products.filter((p) => p?.code).map(mapProduct)
+    return products.filter((p) => p && p.code).map(mapProduct)
 }
 
 export async function getProductByBarcode(code: string) {

@@ -16,7 +16,7 @@ export async function loadMeals(): Promise<MealItem[]> {
 
     try {
         const parsed = JSON.parse(raw)
-        return Array.isArray(parsed) ? parsed : []
+        return Array.isArray(parsed) ? (parsed as MealItem[]) : []
     } catch {
         return []
     }
@@ -49,16 +49,12 @@ export async function getMealById(id: string): Promise<MealItem | null> {
 
 export async function updateMealQuantity(id: string, grams: number) {
     const meals = await loadMeals()
-
     const updated = meals.map((m) => (m.id === id ? { ...m, grams } : m))
-
     await saveMeals(updated)
 }
 
 export async function deleteMeal(id: string) {
     const meals = await loadMeals()
-
     const filtered = meals.filter((m) => m.id !== id)
-
     await saveMeals(filtered)
 }
