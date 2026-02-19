@@ -26,11 +26,21 @@ export async function saveMeals(meals: MealItem[]) {
     await AsyncStorage.setItem(KEY, JSON.stringify(meals))
 }
 
+let _inc = 0
+
+function newId() {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+        return (crypto as any).randomUUID()
+    }
+    _inc = (_inc + 1) % 1_000_000
+    return `${Date.now()}_${_inc}_${Math.random().toString(16).slice(2)}`
+}
+
 export async function addMeal(product: ProductSummary, grams = 100) {
     const meals = await loadMeals()
 
     const item: MealItem = {
-        id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
+        id: newId(),
         createdAt: Date.now(),
         grams,
         product,
