@@ -8,7 +8,7 @@ import {
     ScrollView,
 } from 'react-native'
 import { useEffect, useMemo, useState } from 'react'
-import { getMealById, deleteMeal, type MealItem } from '../../../lib/mealsStore'
+import { getMealById, deleteMeal, type Meal } from '../../../lib/mealsStore'
 
 function safeNum(v: any) {
     const n = Number(v)
@@ -29,7 +29,7 @@ export default function MealDetailPage() {
     const { id } = useLocalSearchParams<{ id: string }>()
     const router = useRouter()
 
-    const [meal, setMeal] = useState<MealItem | null>(null)
+    const [meal, setMeal] = useState<Meal | null>(null)
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
@@ -38,9 +38,14 @@ export default function MealDetailPage() {
         ;(async () => {
             try {
                 setLoading(true)
-                if (!id) return
 
-                const data = await getMealById(String(id))
+                const mealId = typeof id === 'string' ? id : String(id ?? '')
+                if (!mealId) {
+                    if (alive) setMeal(null)
+                    return
+                }
+
+                const data = await getMealById(mealId)
                 if (!alive) return
 
                 if (!data) {
@@ -60,36 +65,33 @@ export default function MealDetailPage() {
     }, [id, router])
 
     const vm = useMemo(() => {
-        const anyMeal = meal as any
-        const product = anyMeal?.product ?? null
-        const n = product?.nutriments100g ?? null
+        const items = Array.isArray(meal?.items) ? meal!.items : []
 
-        const grams = safeNum(anyMeal?.grams)
-        const factor = grams / 100
+        const total = items.reduce(
+            (acc, it) => {
+                const grams = safeNum(it?.grams)
+                const n = it?.product?.nutriments100g
 
-        const calories = safeNum(n?.kcal) * factor
-        const proteins = safeNum(n?.proteins) * factor
-        const carbs = safeNum(n?.carbs) * factor
-        const fat = safeNum(n?.fat) * factor
+                const factor = grams / 100
+                acc.calories += safeNum(n?.kcal) * factor
+                acc.proteins += safeNum(n?.proteins) * factor
+                acc.carbs += safeNum(n?.carbs) * factor
+                acc.fat += safeNum(n?.fat) * factor
+                return acc
+            },
+            { calories: 0, proteins: 0, carbs: 0, fat: 0 },
+        )
 
         return {
-            title: product?.name ?? 'Repas',
-            date: formatDate(safeNum(anyMeal?.createdAt)),
-            product,
-            grams,
-            totals: {
-                calories,
-                proteins,
-                carbs,
-                fat,
-            },
-            nutriscore: product?.nutriscore
-                ? String(product.nutriscore).toUpperCase()
-                : null,
+            title: meal?.type ?? 'Repas',
+            date: formatDate(meal?.createdAt),
+            count: items.length,
+            items,
+            total,
         }
     }, [meal])
 
-    if (loading || !meal || !vm.product) {
+    if (loading) {
         return (
             <View style={styles.center}>
                 <Text style={styles.loading}>Chargement…</Text>
@@ -97,8 +99,25 @@ export default function MealDetailPage() {
         )
     }
 
+    if (!meal) {
+        return (
+            <View style={styles.center}>
+                <Text style={styles.loading}>Repas introuvable</Text>
+                <Pressable
+                    style={[
+                        styles.deleteBtn,
+                        { marginTop: 14, backgroundColor: '#111827' },
+                    ]}
+                    onPress={() => router.back()}
+                >
+                    <Text style={styles.deleteText}>Retour</Text>
+                </Pressable>
+            </View>
+        )
+    }
+
     const onDelete = async () => {
-        await deleteMeal((meal as any).id)
+        await deleteMeal(meal.id)
         router.back()
     }
 
@@ -121,7 +140,7 @@ export default function MealDetailPage() {
                             <Text
                                 style={[styles.chipValue, styles.chipGreenText]}
                             >
-                                {vm.totals.calories.toFixed(0)} kcal
+                                {vm.total.calories.toFixed(0)} kcal
                             </Text>
                             <Text style={styles.chipLabel}>Calories</Text>
                         </View>
@@ -130,7 +149,7 @@ export default function MealDetailPage() {
                             <Text
                                 style={[styles.chipValue, styles.chipBlueText]}
                             >
-                                {vm.totals.proteins.toFixed(1)} g
+                                {vm.total.proteins.toFixed(1)} g
                             </Text>
                             <Text style={styles.chipLabel}>Protéines</Text>
                         </View>
@@ -142,7 +161,7 @@ export default function MealDetailPage() {
                                     styles.chipOrangeText,
                                 ]}
                             >
-                                {vm.totals.carbs.toFixed(1)} g
+                                {vm.total.carbs.toFixed(1)} g
                             </Text>
                             <Text style={styles.chipLabel}>Glucides</Text>
                         </View>
@@ -151,98 +170,141 @@ export default function MealDetailPage() {
                             <Text
                                 style={[styles.chipValue, styles.chipRedText]}
                             >
-                                {vm.totals.fat.toFixed(1)} g
+                                {vm.total.fat.toFixed(1)} g
                             </Text>
                             <Text style={styles.chipLabel}>Lipides</Text>
                         </View>
                     </View>
-
-                    {!!vm.nutriscore && (
-                        <Text style={styles.nutriscore}>
-                            Nutri-Score : {vm.nutriscore}
-                        </Text>
-                    )}
                 </View>
 
                 <View style={styles.section}>
                     <View style={styles.sectionHeadRow}>
-                        <Text style={styles.sectionTitle}>Aliments (1)</Text>
+                        <Text style={styles.sectionTitle}>
+                            Aliments ({vm.count})
+                        </Text>
                     </View>
 
-                    <View style={styles.foodCard}>
-                        <View style={styles.foodTop}>
-                            {vm.product.imageUrl ? (
-                                <Image
-                                    source={{ uri: vm.product.imageUrl }}
-                                    style={styles.thumb}
-                                />
-                            ) : (
+                    <View style={{ gap: 10 }}>
+                        {vm.items.map((it, idx) => {
+                            const p = it.product
+                            const grams = safeNum(it.grams)
+                            const n = p?.nutriments100g
+                            const factor = grams / 100
+
+                            const calories = safeNum(n?.kcal) * factor
+                            const proteins = safeNum(n?.proteins) * factor
+                            const carbs = safeNum(n?.carbs) * factor
+                            const fat = safeNum(n?.fat) * factor
+
+                            return (
                                 <View
-                                    style={[styles.thumb, styles.thumbFallback]}
-                                />
-                            )}
+                                    key={`${p.code}_${idx}`}
+                                    style={styles.foodCard}
+                                >
+                                    <View style={styles.foodTop}>
+                                        {p.imageUrl ? (
+                                            <Image
+                                                source={{ uri: p.imageUrl }}
+                                                style={styles.thumb}
+                                            />
+                                        ) : (
+                                            <View
+                                                style={[
+                                                    styles.thumb,
+                                                    styles.thumbFallback,
+                                                ]}
+                                            />
+                                        )}
 
-                            <View style={styles.foodInfo}>
-                                <Text style={styles.foodName} numberOfLines={1}>
-                                    {vm.product.name}
-                                </Text>
-                                {!!vm.product.brands && (
-                                    <Text
-                                        style={styles.foodBrand}
-                                        numberOfLines={1}
-                                    >
-                                        {vm.product.brands}
-                                    </Text>
-                                )}
-                            </View>
+                                        <View style={styles.foodInfo}>
+                                            <Text
+                                                style={styles.foodName}
+                                                numberOfLines={1}
+                                            >
+                                                {p.name}
+                                            </Text>
+                                            {!!p.brands && (
+                                                <Text
+                                                    style={styles.foodBrand}
+                                                    numberOfLines={1}
+                                                >
+                                                    {p.brands}
+                                                </Text>
+                                            )}
+                                        </View>
 
-                            <View style={styles.foodRight}>
-                                <Text style={styles.foodQty}>{vm.grams} g</Text>
-                            </View>
-                        </View>
+                                        <View style={styles.foodRight}>
+                                            <Text style={styles.foodQty}>
+                                                {grams} g
+                                            </Text>
+                                        </View>
+                                    </View>
 
-                        <View style={styles.foodChipsRow}>
-                            <View style={[styles.miniChip, styles.miniGreen]}>
-                                <Text
-                                    style={[
-                                        styles.miniText,
-                                        styles.miniGreenText,
-                                    ]}
-                                >
-                                    {vm.totals.calories.toFixed(0)} kcal
-                                </Text>
-                            </View>
-                            <View style={[styles.miniChip, styles.miniBlue]}>
-                                <Text
-                                    style={[
-                                        styles.miniText,
-                                        styles.miniBlueText,
-                                    ]}
-                                >
-                                    {vm.totals.proteins.toFixed(1)} g
-                                </Text>
-                            </View>
-                            <View style={[styles.miniChip, styles.miniOrange]}>
-                                <Text
-                                    style={[
-                                        styles.miniText,
-                                        styles.miniOrangeText,
-                                    ]}
-                                >
-                                    {vm.totals.carbs.toFixed(1)} g
-                                </Text>
-                            </View>
-                            <View style={[styles.miniChip, styles.miniRed]}>
-                                <Text
-                                    style={[
-                                        styles.miniText,
-                                        styles.miniRedText,
-                                    ]}
-                                >
-                                    {vm.totals.fat.toFixed(1)} g
-                                </Text>
-                            </View>
-                        </View>
+                                    <View style={styles.foodChipsRow}>
+                                        <View
+                                            style={[
+                                                styles.miniChip,
+                                                styles.miniGreen,
+                                            ]}
+                                        >
+                                            <Text
+                                                style={[
+                                                    styles.miniText,
+                                                    styles.miniGreenText,
+                                                ]}
+                                            >
+                                                {calories.toFixed(0)} kcal
+                                            </Text>
+                                        </View>
+                                        <View
+                                            style={[
+                                                styles.miniChip,
+                                                styles.miniBlue,
+                                            ]}
+                                        >
+                                            <Text
+                                                style={[
+                                                    styles.miniText,
+                                                    styles.miniBlueText,
+                                                ]}
+                                            >
+                                                {proteins.toFixed(1)} g
+                                            </Text>
+                                        </View>
+                                        <View
+                                            style={[
+                                                styles.miniChip,
+                                                styles.miniOrange,
+                                            ]}
+                                        >
+                                            <Text
+                                                style={[
+                                                    styles.miniText,
+                                                    styles.miniOrangeText,
+                                                ]}
+                                            >
+                                                {carbs.toFixed(1)} g
+                                            </Text>
+                                        </View>
+                                        <View
+                                            style={[
+                                                styles.miniChip,
+                                                styles.miniRed,
+                                            ]}
+                                        >
+                                            <Text
+                                                style={[
+                                                    styles.miniText,
+                                                    styles.miniRedText,
+                                                ]}
+                                            >
+                                                {fat.toFixed(1)} g
+                                            </Text>
+                                        </View>
+                                    </View>
+                                </View>
+                            )
+                        })}
                     </View>
                 </View>
             </ScrollView>
@@ -251,7 +313,7 @@ export default function MealDetailPage() {
                 <Pressable
                     style={({ pressed }) => [
                         styles.deleteBtn,
-                        pressed && styles.deleteBtnPressed,
+                        pressed ? styles.deleteBtnPressed : null,
                     ]}
                     onPress={onDelete}
                 >
@@ -277,6 +339,8 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: '#f6f7fb',
+        padding: 16,
+        gap: 10,
     },
     loading: { color: '#111827', fontSize: 16, fontWeight: '700' },
 
@@ -332,8 +396,6 @@ const styles = StyleSheet.create({
 
     chipRed: { borderColor: '#fca5a5', backgroundColor: '#fef2f2' },
     chipRedText: { color: '#dc2626' },
-
-    nutriscore: { color: '#16a34a', fontWeight: '900', marginTop: 2 },
 
     foodCard: {
         borderRadius: 16,

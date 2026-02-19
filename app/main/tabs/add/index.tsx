@@ -13,7 +13,7 @@ import {
 import { useRouter } from 'expo-router'
 import { useDebounce } from '../../../hooks/useDebounce'
 import { searchProducts, type ProductSummary } from '../../../lib/openFoodFacts'
-import { addMeal, loadMeals, type MealItem } from '../../../lib/mealsStore'
+import { createMeal, loadMeals, type Meal } from '../../../lib/mealsStore'
 
 const MEAL_TYPES = ['Petit-déjeuner', 'Déjeuner', 'Dîner', 'Snack'] as const
 type MealType = (typeof MEAL_TYPES)[number]
@@ -51,7 +51,7 @@ export default function AddPage() {
     const [error, setError] = useState<string | null>(null)
 
     const [picked, setPicked] = useState<ProductSummary[]>([])
-    const [recent, setRecent] = useState<MealItem[]>([])
+    const [recent, setRecent] = useState<Meal[]>([])
 
     useEffect(() => {
         ;(async () => {
@@ -98,24 +98,16 @@ export default function AddPage() {
     const onValidate = async () => {
         if (!picked.length) return
 
-        let lastCreatedId: string | null = null
-        for (const p of picked) {
-            const created = await addMeal(p, 100)
-            lastCreatedId = created.id
-        }
+        const meal = await createMeal(mealType, picked, 100)
 
         const all = await loadMeals()
         setRecent(all.slice(0, 3))
         setPicked([])
 
-        if (lastCreatedId) {
-            router.push({
-                pathname: '/main/tabs/home/[id]',
-                params: { id: lastCreatedId },
-            })
-        } else {
-            router.push('/main/tabs/home')
-        }
+        router.push({
+            pathname: '/main/tabs/home/[id]',
+            params: { id: meal.id },
+        })
     }
 
     const Header = (
@@ -136,14 +128,14 @@ export default function AddPage() {
                                 }}
                                 style={({ pressed }) => [
                                     styles.chip,
-                                    active && styles.chipActive,
-                                    pressed && styles.chipPressed,
+                                    active ? styles.chipActive : null,
+                                    pressed ? styles.chipPressed : null,
                                 ]}
                             >
                                 <Text
                                     style={[
                                         styles.chipText,
-                                        active && styles.chipTextActive,
+                                        active ? styles.chipTextActive : null,
                                     ]}
                                 >
                                     {t}
@@ -160,7 +152,7 @@ export default function AddPage() {
                 <Pressable
                     style={({ pressed }) => [
                         styles.scanBtn,
-                        pressed && styles.scanBtnPressed,
+                        pressed ? styles.scanBtnPressed : null,
                     ]}
                     onPress={() => router.push('/main/tabs/add/camera')}
                 >
@@ -203,17 +195,14 @@ export default function AddPage() {
                     <View style={styles.pickedList}>
                         {picked.map((p) => (
                             <View key={p.code} style={styles.pickedRow}>
-                                <Text
-                                    style={styles.pickedName}
-                                    numberOfLines={1}
-                                >
+                                <Text style={styles.pickedName} numberOfLines={1}>
                                     {p.name}
                                 </Text>
                                 <Pressable
                                     onPress={() => onTogglePick(p)}
                                     style={({ pressed }) => [
                                         styles.removeDot,
-                                        pressed && { opacity: 0.8 },
+                                        pressed ? { opacity: 0.8 } : null,
                                     ]}
                                 >
                                     <Text style={styles.removeDotText}>−</Text>
@@ -231,13 +220,9 @@ export default function AddPage() {
             {!!recent.length && (
                 <View style={styles.recentBox}>
                     <Text style={styles.sectionTitle}>Ajoutés récemment</Text>
-                    {recent.map((m: any) => (
-                        <Text
-                            key={String(m.id)}
-                            style={styles.recentItem}
-                            numberOfLines={1}
-                        >
-                            • {m.product?.name ?? 'Produit'}
+                    {recent.map((m) => (
+                        <Text key={m.id} style={styles.recentItem} numberOfLines={1}>
+                            • {m.type} • {m.items.length} aliment(s)
                         </Text>
                     ))}
                 </View>
@@ -261,24 +246,16 @@ export default function AddPage() {
                         <Pressable
                             style={({ pressed }) => [
                                 styles.card,
-                                pressed && styles.cardPressed,
-                                selected && styles.cardSelected,
+                                pressed ? styles.cardPressed : null,
+                                selected ? styles.cardSelected : null,
                             ]}
                             onPress={() => onTogglePick(item)}
                         >
                             <View style={styles.thumbWrap}>
                                 {item.imageUrl ? (
-                                    <Image
-                                        source={{ uri: item.imageUrl }}
-                                        style={styles.thumb}
-                                    />
+                                    <Image source={{ uri: item.imageUrl }} style={styles.thumb} />
                                 ) : (
-                                    <View
-                                        style={[
-                                            styles.thumb,
-                                            styles.thumbFallback,
-                                        ]}
-                                    />
+                                    <View style={[styles.thumb, styles.thumbFallback]} />
                                 )}
                             </View>
 
@@ -288,10 +265,7 @@ export default function AddPage() {
                                 </Text>
 
                                 {!!item.brands && (
-                                    <Text
-                                        style={styles.brand}
-                                        numberOfLines={1}
-                                    >
+                                    <Text style={styles.brand} numberOfLines={1}>
                                         {item.brands}
                                     </Text>
                                 )}
@@ -305,13 +279,13 @@ export default function AddPage() {
                                 <View
                                     style={[
                                         styles.plusBadge,
-                                        selected && styles.plusBadgeSelected,
+                                        selected ? styles.plusBadgeSelected : null,
                                     ]}
                                 >
                                     <Text
                                         style={[
                                             styles.plusText,
-                                            selected && styles.plusTextSelected,
+                                            selected ? styles.plusTextSelected : null,
                                         ]}
                                     >
                                         {selected ? '✓' : '+'}
@@ -330,9 +304,7 @@ export default function AddPage() {
                     style={({ pressed }) => [
                         styles.validateBtn,
                         picked.length === 0 ? styles.validateBtnDisabled : null,
-                        pressed && picked.length > 0
-                            ? styles.validateBtnPressed
-                            : null,
+                        pressed && picked.length > 0 ? styles.validateBtnPressed : null,
                     ]}
                 >
                     <Text style={styles.validateText}>Valider le repas</Text>
@@ -345,11 +317,7 @@ export default function AddPage() {
 const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: '#f6f7fb' },
 
-    header: {
-        paddingHorizontal: 16,
-        paddingTop: 18,
-        gap: 10,
-    },
+    header: { paddingHorizontal: 16, paddingTop: 18, gap: 10 },
 
     title: {
         fontSize: 26,
@@ -379,10 +347,7 @@ const styles = StyleSheet.create({
         borderColor: '#eef2f7',
     },
     chipPressed: { opacity: 0.88 },
-    chipActive: {
-        backgroundColor: '#22c55e',
-        borderColor: '#22c55e',
-    },
+    chipActive: { backgroundColor: '#22c55e', borderColor: '#22c55e' },
     chipText: { color: '#6b7280', fontWeight: '800', fontSize: 12 },
     chipTextActive: { color: 'white' },
 
@@ -416,19 +381,9 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    qrSquareText: {
-        color: 'white',
-        fontWeight: '900',
-        fontSize: 18,
-        marginTop: -2,
-    },
+    qrSquareText: { color: 'white', fontWeight: '900', fontSize: 18, marginTop: -2 },
 
-    rowInfo: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
-        marginTop: 4,
-    },
+    rowInfo: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 },
     muted: { color: '#6b7280', fontWeight: '600' },
     error: { color: '#ef4444', fontWeight: '800', marginTop: 4 },
 
@@ -464,10 +419,7 @@ const styles = StyleSheet.create({
     },
     removeDotText: { color: 'white', fontWeight: '900', marginTop: -1 },
 
-    listContent: {
-        paddingBottom: 0,
-        gap: 10,
-    },
+    listContent: { paddingBottom: 0, gap: 10 },
 
     card: {
         marginHorizontal: 16,
@@ -509,12 +461,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#ffffff',
     },
     plusBadgeSelected: { backgroundColor: '#22c55e', borderColor: '#22c55e' },
-    plusText: {
-        color: '#111827',
-        fontWeight: '900',
-        fontSize: 16,
-        marginTop: -1,
-    },
+    plusText: { color: '#111827', fontWeight: '900', fontSize: 16, marginTop: -1 },
     plusTextSelected: { color: 'white' },
 
     recentBox: {

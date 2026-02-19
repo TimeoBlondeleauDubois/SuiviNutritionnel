@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { View, Text, FlatList, Pressable, StyleSheet } from 'react-native'
 import { useFocusEffect, useRouter } from 'expo-router'
-import { loadMeals, type MealItem } from '../../../lib/mealsStore'
+import { loadMeals, type Meal } from '../../../lib/mealsStore'
 
 function formatDate(ts?: number) {
     if (!ts) return ''
@@ -20,7 +20,7 @@ function safeNum(v: any) {
 
 export default function HomePage() {
     const router = useRouter()
-    const [meals, setMeals] = useState<MealItem[]>([])
+    const [meals, setMeals] = useState<Meal[]>([])
 
     const refresh = useCallback(async () => {
         const data = await loadMeals()
@@ -43,48 +43,48 @@ export default function HomePage() {
 
             <FlatList
                 data={meals}
-                keyExtractor={(m: any) => String(m.id)}
+                keyExtractor={(m) => m.id}
                 ListEmptyComponent={
                     <View style={styles.empty}>
-                        <Text style={styles.emptyText}>
-                            Aucun repas enregistré
-                        </Text>
+                        <Text style={styles.emptyText}>Aucun repas enregistré</Text>
                     </View>
                 }
                 contentContainerStyle={styles.listContent}
                 renderItem={({ item }) => {
-                    const anyItem = item as any
-                    const product = anyItem.product
-                    const n = product?.nutriments100g
+                    const items = Array.isArray(item.items) ? item.items : []
+                    const count = items.length
 
-                    const grams = safeNum(anyItem.grams)
-                    const kcal100 = safeNum(n?.kcal)
-                    const kcalTotal = Math.round(kcal100 * (grams / 100))
+                    const kcalTotal = Math.round(
+                        items.reduce((sum, it) => {
+                            const kcal100 = safeNum(it?.product?.nutriments100g?.kcal)
+                            const grams = safeNum(it?.grams)
+                            return sum + kcal100 * (grams / 100)
+                        }, 0),
+                    )
 
-                    const createdAt = safeNum(anyItem.createdAt)
-                    const dateLabel = formatDate(createdAt)
+                    const dateLabel = formatDate(item.createdAt)
 
                     return (
                         <Pressable
                             style={({ pressed }) => [
                                 styles.card,
-                                pressed && styles.cardPressed,
+                                pressed ? styles.cardPressed : null,
                             ]}
                             onPress={() =>
                                 router.push({
                                     pathname: '/main/tabs/home/[id]',
-                                    params: { id: String(anyItem.id) },
+                                    params: { id: item.id },
                                 })
                             }
                         >
                             <View style={styles.cardLeft}>
                                 <Text style={styles.mealName} numberOfLines={1}>
-                                    {product?.name ?? 'Repas'}
+                                    {item.type}
                                 </Text>
 
                                 <Text style={styles.mealMeta} numberOfLines={1}>
                                     {dateLabel ? `${dateLabel} • ` : ''}
-                                    {grams} g
+                                    {count} aliment(s)
                                 </Text>
                             </View>
 
@@ -95,10 +95,7 @@ export default function HomePage() {
             />
 
             <Pressable
-                style={({ pressed }) => [
-                    styles.fab,
-                    pressed && styles.fabPressed,
-                ]}
+                style={({ pressed }) => [styles.fab, pressed ? styles.fabPressed : null]}
                 onPress={() => router.push('/main/tabs/add')}
             >
                 <Text style={styles.fabText}>＋</Text>
@@ -163,7 +160,7 @@ const styles = StyleSheet.create({
     },
 
     mealName: {
-        fontWeight: '700',
+        fontWeight: '800',
         color: '#111827',
         fontSize: 15,
     },
@@ -172,10 +169,11 @@ const styles = StyleSheet.create({
         marginTop: 2,
         fontSize: 12,
         color: '#6b7280',
+        fontWeight: '600',
     },
 
     kcal: {
-        fontWeight: '800',
+        fontWeight: '900',
         fontSize: 14,
         color: '#22c55e',
     },
